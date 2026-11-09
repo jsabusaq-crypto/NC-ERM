@@ -11,7 +11,14 @@ import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { assessRisk, syncTopRisk, IMPACT_DOMAINS, type RiskAssessmentInput } from '@nh-erm/core';
+import {
+  assessRisk,
+  syncTopRisk,
+  IMPACT_DOMAINS,
+  NAJRAN_ORG_STRUCTURE,
+  normalizeOrgName,
+  type RiskAssessmentInput,
+} from '@nh-erm/core';
 import { InMemoryAuditStore } from './audit/audit.ts';
 import { can, type Actor } from './auth/rbac.ts';
 
@@ -171,6 +178,29 @@ route('GET', '/api/new-risks', (_req, res, ctx) => {
 
 // Migration report from the official-file import (§3)
 route('GET', '/api/migration-report', (_req, res) => json(res, 200, migrationReport ?? { note: 'no migration loaded' }));
+
+// Official organizational structure (§12, signed org chart)
+route('GET', '/api/org-structure', (_req, res) => json(res, 200, NAJRAN_ORG_STRUCTURE));
+
+// Risk distribution by sector and department, computed from the register (§10)
+route('GET', '/api/by-sector', (_req, res, ctx) => {
+  if (!can(ctx.actor, 'risk:read')) return json(res, 403, { error: 'forbidden' });
+  const active = [...risks.values()].filter((r) => !r.deletedAt && r.status === 'ACTIVE');
+  const bySector = new Map<string, { count: number; top: number }>();
+  const byDept = new Map<string, number>();
+  for (const r of active) {
+    const sec = r.sector ? normalizeOrgName(r.sector) : '—';
+    const dep = r.department ? normalizeOrgName(r.department) : '—';
+    const s = bySector.get(sec) ?? { count: 0, top: 0 };
+    s.count++;
+    if (r.isTopRisk) s.top++;
+    bySector.set(sec, s);
+    byDept.set(dep, (byDept.get(dep) ?? 0) + 1);
+  }
+  const sectors = [...bySector.entries()].map(([name, v]) => ({ name, ...v })).sort((a, b) => b.count - a.count);
+  const departments = [...byDept.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
+  json(res, 200, { sectors, departments });
+});
 
 // Create a risk (enters PENDING_APPROVAL staging — §13)
 route('POST', '/api/risks', async (_req, res, ctx) => {

@@ -75,6 +75,10 @@
       <h3 data-t="by_level"></h3>
       <div id="levelBars" class="grid" style="gap:9px"></div>
     </div>
+    <div class="card" style="grid-column:1/-1">
+      <h3 data-t="by_sector"></h3>
+      <div id="sectorBars" class="grid" style="gap:9px"></div>
+    </div>
     <div class="card">
       <h3 data-t="kri"></h3>
       <div id="kri"></div>
@@ -164,6 +168,7 @@ const T = {
   lang:{ar:"English",en:"العربية"},
   demo_note:{ar:"عرض توضيحي حيّ — الحاسبة موصولة بمحرك التقييم الحقيقي في الخادم (/api/assess). باقي الجداول بيانات تجريبية.",en:"Live demo — the calculator is wired to the real server scoring engine (/api/assess). Other tables use demo data."},
   by_level:{ar:"التوزيع حسب المستوى",en:"Distribution by level"},
+  by_sector:{ar:"التوزيع حسب القطاع (مع أهم المخاطر)",en:"Distribution by sector (with top risks)"},
   kri:{ar:"إنجاز خطط المعالجة (KRIs)",en:"Treatment-plan completion (KRIs)"},
   kpi:{ar:"الالتزام بالمواعيد (KPIs)",en:"Deadline adherence (KPIs)"},
   code:{ar:"رمز الخطر",en:"Code"},dept:{ar:"الإدارة",en:"Department"},
@@ -226,6 +231,14 @@ function renderDashboard(){
       <div class="bar"><i style="width:${x.c/maxc*100}%;background:var(--level_${x.l})"></i></div>
       <span style="text-align:end">${x.c}</span>
     </div>`).join("");
+  // by sector (count + top-risk overlay)
+  const smax=Math.max(1,...SECTORS.map(s=>s.count));
+  document.getElementById("sectorBars").innerHTML=SECTORS.map(s=>`
+    <div style="display:grid;grid-template-columns:230px 1fr 72px;align-items:center;gap:8px">
+      <span style="font-size:13px">${esc(s.name)}</span>
+      <div class="bar"><i style="width:${s.count/smax*100}%;background:var(--brand-accent)"></i></div>
+      <span style="text-align:end;font-size:13px">${s.count}${s.top?` <span style="color:var(--level_1)" title="top risks">▲${s.top}</span>`:""}</span>
+    </div>`).join("");
 }
 const meters=(arr)=>arr.map(m=>`<div style="margin-bottom:10px">
   <div style="display:flex;justify-content:space-between;font-size:13px"><span>${m.n}</span><span>${m.p}%</span></div>
@@ -234,7 +247,7 @@ document.getElementById("kri").innerHTML=meters([{n:"IT",p:72},{n:"Nursing",p:55
 document.getElementById("kpi").innerHTML=meters([{n:"IT",p:94},{n:"Nursing",p:61},{n:"Pharmacy",p:79}]);
 
 // Real data loaded from the migrated official file
-let REG=[], TOP=[], NEW=[], REPORT=null;
+let REG=[], TOP=[], NEW=[], REPORT=null, SECTORS=[];
 const esc=s=>String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 const fmt=(s,o)=>s.replace(/\{(\w+)\}/g,(_,k)=>o[k]);
 const lvlBadge=r=> r.residualLevel? `<span class="badge" style="background:var(--level_${r.residualLevel})">${tr("level")} ${r.residualLevel}</span>`:"—";
@@ -242,13 +255,14 @@ const name=r=> lang==="ar"? (r.department||"—") : (r.department||"—");
 
 async function loadData(){
   try{
-    const [a,b,c,d]=await Promise.all([
+    const [a,b,c,d,e]=await Promise.all([
       fetch("/api/risks").then(x=>x.json()),
       fetch("/api/top-risks").then(x=>x.json()),
       fetch("/api/new-risks").then(x=>x.json()),
       fetch("/api/migration-report").then(x=>x.json()),
+      fetch("/api/by-sector").then(x=>x.json()),
     ]);
-    REG=a.risks||[]; TOP=b.risks||[]; NEW=c.risks||[]; REPORT=d;
+    REG=a.risks||[]; TOP=b.risks||[]; NEW=c.risks||[]; REPORT=d; SECTORS=(e.sectors)||[];
   }catch(e){ console.error(e); }
 }
 function renderTables(){
