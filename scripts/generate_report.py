@@ -93,6 +93,17 @@ def main():
         rr = pp.add_run(str(v)); rr.font.size = Pt(10); rr.bold = True; rr.font.name = 'Arial'
     doc.add_paragraph()
 
+    # explanatory introduction
+    intro_p = doc.add_paragraph(); intro_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT; set_rtl(intro_p)
+    ri = intro_p.add_run(
+        'يعرض هذا التقرير المخاطر ضمن النطاق المحدّد أعلاه، مُقيّمةً وفق المنهجية الرسمية لإدارة '
+        'المخاطر المؤسسية المعتمدة من شركة الصحة القابضة (مقياس الاحتمالية ومقياس الأثر عبر مجالات '
+        'الخطر، ومصفوفة المخاطر الكامنة، وكفاية البيئة الرقابية، ومصفوفة المخاطر المتبقية). يوضّح الجدول '
+        'أدناه لكل خطر: الإدارة المسؤولة، ووصفه، ومستوى احتماليته وأثره، وتقييمه الكامن، ومستواه المتبقّي. '
+        'ويُستخدم هذا التقرير لمتابعة أهم المخاطر وخطط معالجتها ودعم اتخاذ القرار على مستوى التجمع.')
+    ri.font.size = Pt(10); ri.font.name = 'Arial'; ri.font.color.rgb = RGBColor(0x30, 0x45, 0x5a)
+    doc.add_paragraph()
+
     # risk table
     cols = ['المستوى', 'الكامن', 'الأثر', 'الاحتمالية', 'الإدارة', 'وصف الخطر', 'الرمز']
     tbl = doc.add_table(rows=1, cols=len(cols)); tbl.style = 'Table Grid'; tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
@@ -109,6 +120,24 @@ def main():
         cell_text(cells[4], r.get('department') or '—')
         cell_text(cells[5], (r.get('title') or '')[:80])
         cell_text(cells[6], r.get('code') or '—', align='center', bold=True)
+
+    # sign-off / approval block
+    doc.add_paragraph()
+    so_t = doc.add_paragraph(); so_t.alignment = WD_ALIGN_PARAGRAPH.CENTER; set_rtl(so_t)
+    rso = so_t.add_run('اعتماد التقرير'); rso.bold = True; rso.font.size = Pt(12); rso.font.color.rgb = BRAND; rso.font.name = 'Arial'
+    sign = doc.add_table(rows=1, cols=4); sign.style = 'Table Grid'; sign.alignment = WD_TABLE_ALIGNMENT.CENTER
+    # logical cells L→R: [التوقيع, التاريخ, الاسم والمنصب, البند] so البند shows rightmost in RTL reading
+    for i, h in enumerate(['التوقيع', 'التاريخ', 'الاسم والمنصب', 'البند']):
+        c = sign.rows[0].cells[i]; shade(c, '0A1F30'); cell_text(c, h, bold=True, color=WHITE, align='center', size=9)
+    for role, name in [('الإعداد', 'مدير إدارة المخاطر المؤسسية'),
+                       ('المراجعة', 'مدير الإدارة التنفيذية للحوكمة والمخاطر والالتزام'),
+                       ('الاعتماد', 'الرئيس التنفيذي للتجمع')]:
+        cells = sign.add_row().cells
+        cells[0].height = Pt(34)
+        cell_text(cells[0], '', align='center')        # signature (blank)
+        cell_text(cells[1], '', align='center')        # date (blank)
+        cell_text(cells[2], name, align='right', size=9)
+        cell_text(cells[3], role, bold=True, align='center', color=BRAND, size=10)
 
     # footer note
     doc.add_paragraph()
