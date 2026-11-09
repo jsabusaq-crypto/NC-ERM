@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+"""
+NH-ERM report generator (§5 — official report template).
+
+Takes report inputs (subject, scope, department) + the risk data and produces a
+branded Word report in the cluster identity: official logo, title, meta block,
+and a risk table. This is the "export to the official report template" path —
+in the deployed platform it is a download button; here it writes a .docx.
+
+Usage:
+  python3 -I scripts/generate_report.py <risks.json> <logo.png> <out.docx> \
+      --subject "..." --scope all|top|department|level --dept "..." --level N
+"""
+import sys, json, argparse, datetime
+from docx import Document
+from docx.shared import Pt, RGBColor, Inches, Cm
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.table import WD_TABLE_ALIGNMENT
+from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
+
+BRAND = RGBColor(0x00, 0x96, 0xDD)
+WHITE = RGBColor(0xFF, 0xFF, 0xFF)
+LEVEL_FILL = {1: 'D7263D', 2: 'EF6C2F', 3: 'EAA818', 4: '3AA266', 5: '79C99A'}
+BAND_AR = {'very_low': 'منخفض جداً', 'low': 'منخفض', 'medium': 'متوسط', 'high': 'عالي', 'critical': 'حرج'}
+
+
+def set_rtl(paragraph):
+    pPr = paragraph._p.get_or_add_pPr()
+    bidi = OxmlElement('w:bidi'); pPr.append(bidi)
+
+
+def shade(cell, hex_fill):
+    tcPr = cell._tc.get_or_add_tcPr()
+    sh = OxmlElement('w:shd'); sh.set(qn('w:val'), 'clear'); sh.set(qn('w:fill'), hex_fill)
+    tcPr.append(sh)
+
+
+def cell_text(cell, text, bold=False, color=None, align='right', size=9):
+    cell.text = ''
+    p = cell.paragraphs[0]; p.alignment = WD_ALIGN_PARAGRAPH.RIGHT if align == 'right' else WD_ALIGN_PARAGRAPH.CENTER
+    set_rtl(p)
+    r = p.add_run(str(text)); r.font.size = Pt(size); r.bold = bold
+    if color: r.font.color.rgb = color
+    r.font.name = 'Arial'
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument('risks'); ap.add_argument('logo'); ap.add_argument('out')
+    ap.add_argument('--subject', default='تقرير المخاطر المؤسسية')
+    ap.add_argument('--scope', default='top')
+    ap.add_argument('--dept', default='')
+    ap.add_argument('--level', type=int, default=0)
+    a = ap.parse_args()
+
+    data = json.load(open(a.risks, encoding='utf-8'))
+    reg = data['register']
+
+    if a.scope == 'top':
+        rows = [r for r in reg if r.get('isTopRisk')]
+        scope_ar = 'أهم المخاطر (المستوى 1 و2)'
+    elif a.scope == 'department':
+        rows = [r for r in reg if (r.get('department') or '').strip() == a.dept.strip()]
+        scope_ar = f'مخاطر إدارة: {a.dept}'
+    elif a.scope == 'level':
+        rows = [r for r in reg if r.get('residualLevel') == a.level]
+        scope_ar = f'المخاطر من المستوى {a.level}'
+    else:
+        rows = reg; scope_ar = 'جميع المخاطر'
+
+    doc = Document()
+    sec = doc.sections[0]
+    sec.left_margin = sec.right_margin = Cm(1.6); sec.top_margin = Cm(1.4)
+
+    # logo
+    p = doc.add_paragraph(); p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.add_run().add_picture(a.logo, width=Inches(2.4))
+
+    # title bar
+    t = doc.add_paragraph(); t.alignment = WD_ALIGN_PARAGRAPH.CENTER; set_rtl(t)
+    r = t.add_run(a.subject); r.bold = True; r.font.size = Pt(16); r.font.color.rgb = BRAND; r.font.name = 'Arial'
+    sub = doc.add_paragraph(); sub.alignment = WD_ALIGN_PARAGRAPH.CENTER; set_rtl(sub)
+    rs = sub.add_run('تجمع نجران الصحي · منصة NH-ERM لإدارة المخاطر المؤسسية'); rs.font.size = Pt(10); rs.font.color.rgb = RGBColor(0x5f, 0x74, 0x88); rs.font.name = 'Arial'
+
+    # meta
+    meta = doc.add_table(rows=1, cols=3); meta.alignment = WD_TABLE_ALIGNMENT.CENTER
+    today = datetime.date.today().isoformat()
+    for i, (k, v) in enumerate([('نطاق التقرير', scope_ar), ('عدد المخاطر', str(len(rows))), ('تاريخ الإصدار', today)]):
+        c = meta.rows[0].cells[i]; shade(c, 'F6F9FC')
+        cell_text(c, k, bold=True, color=BRAND, align='center', size=9)
+        pp = c.add_paragraph(); pp.alignment = WD_ALIGN_PARAGRAPH.CENTER; set_rtl(pp)
+        rr = pp.add_run(str(v)); rr.font.size = Pt(10); rr.bold = True; rr.font.name = 'Arial'
+    doc.add_paragraph()
+
+    # risk table
+    cols = ['المستوى', 'الكامن', 'الأثر', 'الاحتمالية', 'الإدارة', 'وصف الخطر', 'الرمز']
+    tbl = doc.add_table(rows=1, cols=len(cols)); tbl.style = 'Table Grid'; tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
+    for i, h in enumerate(cols):
+        c = tbl.rows[0].cells[i]; shade(c, '0A1F30'); cell_text(c, h, bold=True, color=WHITE, align='center', size=9)
+    for r in rows:
+        cells = tbl.add_row().cells
+        lvl = r.get('residualLevel')
+        cell_text(cells[0], f"مستوى {lvl}" if lvl else '—', align='center', color=WHITE if lvl else None)
+        if lvl: shade(cells[0], LEVEL_FILL.get(lvl, 'FFFFFF'))
+        cell_text(cells[1], BAND_AR.get(r.get('inherentBand'), '—'), align='center')
+        cell_text(cells[2], r.get('impactLabel') or '—', align='center')
+        cell_text(cells[3], r.get('likelihoodLabel') or '—', align='center')
+        cell_text(cells[4], r.get('department') or '—')
+        cell_text(cells[5], (r.get('title') or '')[:80])
+        cell_text(cells[6], r.get('code') or '—', align='center', bold=True)
+
+    # footer note
+    doc.add_paragraph()
+    f = doc.add_paragraph(); f.alignment = WD_ALIGN_PARAGRAPH.CENTER; set_rtl(f)
+    rf = f.add_run('أُصدر آلياً من منصة NH-ERM — تجمع نجران الصحي'); rf.font.size = Pt(8); rf.font.color.rgb = RGBColor(0x90, 0xa1, 0xb4); rf.font.name = 'Arial'
+
+    doc.save(a.out)
+    print(f'Report: {len(rows)} risks · scope={a.scope} → {a.out}')
+
+
+if __name__ == '__main__':
+    main()
