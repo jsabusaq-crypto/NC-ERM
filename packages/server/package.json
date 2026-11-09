@@ -1,0 +1,22 @@
+{
+  "name": "@nh-erm/server",
+  "version": "0.1.0",
+  "description": "NH-ERM backend: REST API, RBAC, Excel import/export, audit log.",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "node --watch src/index.ts",
+    "start": "node src/index.ts",
+    "test": "node --test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nh-erm/core": "*",
+    "exceljs": "^4.4.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "@types/node": "^22.0.0"
+  },
+  "license": "UNLICENSED"
+}

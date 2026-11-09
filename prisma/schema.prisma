@@ -1,0 +1,337 @@
+// NH-ERM database schema (PostgreSQL).
+//
+// Models the official 9-sheet template relationally. The 57-column Risk Register
+// is normalized here; the exact column order/format fidelity for export lives in
+// packages/server/src/excel (column map), not in the DB shape.
+//
+// Conventions:
+//  - Soft delete via `deletedAt` (§6). Queries filter `deletedAt IS NULL` for active rows.
+//  - Audit log and change log are append-only (§7) — no update/delete at the app layer.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Organizational structure (§12) — Cluster → Sector → Department
+// ─────────────────────────────────────────────────────────────────────────────
+model Cluster {
+  id        String    @id @default(cuid())
+  nameAr    String
+  nameEn    String
+  sectors   Sector[]
+  createdAt DateTime  @default(now())
+}
+
+model Sector {
+  id          String       @id @default(cuid())
+  cluster     Cluster      @relation(fields: [clusterId], references: [id])
+  clusterId   String
+  nameAr      String
+  nameEn      String
+  departments Department[]
+  createdAt   DateTime     @default(now())
+
+  @@index([clusterId])
+}
+
+model Department {
+  id        String   @id @default(cuid())
+  sector    Sector   @relation(fields: [sectorId], references: [id])
+  sectorId  String
+  nameAr    String
+  nameEn    String
+  risks     Risk[]
+  users     User[]
+  createdAt DateTime @default(now())
+
+  @@index([sectorId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RBAC (§12) — platform-only accounts, no SSO
+// ─────────────────────────────────────────────────────────────────────────────
+enum RoleKey {
+  ERM_MANAGER // Group 1 — full permissions; creates/activates accounts
+  CLUSTER_CEO // full platform permissions
+  DEPARTMENT_MANAGER // approves new risks; full permissions within department
+  RISK_OWNER // owns risks within a department
+  DEPARTMENT_USER // edits within department (applied directly, no later approval)
+  VIEWER // read-only
+  AUDITOR // read audit log
+  SYSTEM_ADMIN // audit search/filter screen (§7)
+}
+
+model Role {
+  id        String     @id @default(cuid())
+  key       RoleKey    @unique
+  nameAr    String
+  nameEn    String
+  users     UserRole[]
+}
+
+model User {
+  id           String     @id @default(cuid())
+  username     String     @unique
+  email        String     @unique
+  // Independent platform credential — argon2/bcrypt hash, created inside the platform.
+  passwordHash String
+  displayAr    String
+  displayEn    String
+  department   Department? @relation(fields: [departmentId], references: [id])
+  departmentId String?
+  isActive     Boolean    @default(false) // activated by ERM_MANAGER
+  roles        UserRole[]
+  createdAt    DateTime   @default(now())
+  createdBy    String? // userId of the ERM_MANAGER who created this account
+
+  @@index([departmentId])
+}
+
+model UserRole {
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
+  role   Role   @relation(fields: [roleId], references: [id])
+  roleId String
+
+  @@id([userId, roleId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Risk register (§3, §8) + New-risks staging (§7, §13)
+// ─────────────────────────────────────────────────────────────────────────────
+enum RiskStatus {
+  PENDING_APPROVAL // in the "New Risks" staging sheet, awaiting Department Manager (§13)
+  ACTIVE // in the official Risk Register
+}
+
+enum InherentBand {
+  VERY_LOW
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ControlAdequacy {
+  EXCELLENT
+  ACCEPTABLE
+  NEUTRAL
+  UNACCEPTABLE
+  WEAK
+}
+
+enum ControlType {
+  PREVENTIVE
+  DETECTIVE
+  CORRECTIVE
+  DIRECTIVE
+  NONE
+}
+
+enum ControlNature {
+  MANUAL
+  AUTOMATED
+  HYBRID
+  NONE
+}
+
+enum ResponsePlan {
+  TREAT
+  TOLERATE
+  TRANSFER
+  TERMINATE
+}
+
+model Risk {
+  id        String     @id @default(cuid())
+  // Unique risk code — the join key between Register and Top Risks (§4).
+  code      String     @unique
+  status    RiskStatus @default(PENDING_APPROVAL)
+
+  // Identification
+  department   Department @relation(fields: [departmentId], references: [id])
+  departmentId String
+  ownerUserId  String?
+  titleAr      String
+  titleEn      String?
+  descriptionAr String?
+  descriptionEn String?
+
+  // Assessment inputs
+  likelihood     Int // 1..5
+  impacts        RiskImpact[] // 24 per-domain scores (§8.2)
+  controlActivated Boolean @default(false) // §8.4 question 1
+  controlShared    Boolean @default(false) // question 2
+  controlComplied  Boolean @default(false) // question 3
+  controlEffective Boolean @default(false) // question 4
+
+  // Controls & response (§8.7)
+  controlType   ControlType   @default(NONE)
+  controlNature ControlNature @default(NONE)
+  responsePlan  ResponsePlan?
+
+  // Computed assessment outputs (§8) — persisted for reporting/export performance
+  aggregatedImpact Int             @default(0)
+  inherentScore    Int             @default(0)
+  inherentBand     InherentBand    @default(VERY_LOW)
+  controlAdequacy  ControlAdequacy @default(WEAK)
+  residualPriority Int             @default(25) // 1..25
+  residualLevel    Int             @default(5) // 1..5
+  isTopRisk        Boolean         @default(false)
+
+  // Lifecycle
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime? // Soft Delete (§6) — null = active
+  approvedAt DateTime? // when Department Manager approved (§13)
+  approvedBy String?
+
+  topRiskHistory TopRiskHistory[]
+  changes        ChangeLog[]
+  kris           Kri[]
+
+  @@index([departmentId])
+  @@index([status])
+  @@index([isTopRisk])
+  @@index([residualLevel])
+  @@index([deletedAt])
+}
+
+// One row per applicable impact domain (§8.2). domainKey ∈ IMPACT_DOMAINS keys.
+model RiskImpact {
+  id        String @id @default(cuid())
+  risk      Risk   @relation(fields: [riskId], references: [id], onDelete: Cascade)
+  riskId    String
+  domainKey String
+  score     Int // 1..5
+
+  @@unique([riskId, domainKey])
+  @@index([riskId])
+}
+
+// Top-Risks membership history (§4) — retained even after removal.
+model TopRiskHistory {
+  id        String   @id @default(cuid())
+  risk      Risk     @relation(fields: [riskId], references: [id])
+  riskId    String
+  event     String // 'added' | 'removed'
+  priority  Int
+  at        DateTime @default(now())
+
+  @@index([riskId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Change log (§6) — per-field old/new values with reason
+// ─────────────────────────────────────────────────────────────────────────────
+model ChangeLog {
+  id        String   @id @default(cuid())
+  risk      Risk     @relation(fields: [riskId], references: [id])
+  riskId    String
+  userId    String
+  action    String // 'create' | 'update' | 'delete' | 'restore'
+  field     String? // null for create/delete whole-row
+  oldValue  String?
+  newValue  String?
+  reason    String?
+  at        DateTime @default(now())
+
+  @@index([riskId])
+  @@index([userId])
+  @@index([at])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Audit log (§7) — independent, append-only. Covers login + modifications.
+// ─────────────────────────────────────────────────────────────────────────────
+enum AuditKind {
+  LOGIN_SUCCESS
+  LOGIN_FAILURE
+  LOGOUT
+  SESSION_EXPIRED
+  RISK_CREATE
+  RISK_UPDATE
+  RISK_DELETE
+  RISK_RESTORE
+  USER_CREATE
+  USER_ACTIVATE
+  EXPORT
+  IMPORT
+  METHODOLOGY_CHANGE
+}
+
+model AuditLog {
+  id           String    @id @default(cuid())
+  kind         AuditKind
+  username     String? // recorded even on failed login (no user row)
+  userId       String?
+  departmentId String?
+  entityType   String?
+  entityId     String?
+  oldValue     String?
+  newValue     String?
+  ip           String?
+  at           DateTime  @default(now())
+
+  @@index([userId])
+  @@index([departmentId])
+  @@index([kind])
+  @@index([at])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Methodology config (§8) — versioned so matrices stay configurable
+// ─────────────────────────────────────────────────────────────────────────────
+model MethodologyConfig {
+  id        String   @id @default(cuid())
+  version   Int      @unique
+  // Full Methodology object (see packages/core/src/methodology.ts) as JSON.
+  config    Json
+  isActive  Boolean  @default(false)
+  note      String?
+  createdAt DateTime @default(now())
+  createdBy String?
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// KRIs (§9) — treatment-plan tracking with deadline alerts
+// ─────────────────────────────────────────────────────────────────────────────
+model Kri {
+  id              String   @id @default(cuid())
+  risk            Risk     @relation(fields: [riskId], references: [id])
+  riskId          String
+  titleAr         String
+  titleEn         String?
+  ownerUserId     String
+  dueDate         DateTime
+  completionPct   Int      @default(0) // 0..100
+  status          String   @default("on_track") // 'on_track' | 'at_risk' | 'overdue' | 'done'
+  lastAlertAt     DateTime?
+  createdAt       DateTime @default(now())
+
+  @@index([riskId])
+  @@index([ownerUserId])
+  @@index([dueDate])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Import batches (§3) — the post-import review report
+// ─────────────────────────────────────────────────────────────────────────────
+model ImportBatch {
+  id            String   @id @default(cuid())
+  fileName      String
+  importedCount Int      @default(0)
+  duplicateCount Int     @default(0)
+  missingFieldCount Int  @default(0)
+  errorCount    Int      @default(0)
+  reportJson    Json
+  status        String   @default("pending_review") // 'pending_review' | 'approved' | 'rejected'
+  createdAt     DateTime @default(now())
+  createdBy     String?
+}

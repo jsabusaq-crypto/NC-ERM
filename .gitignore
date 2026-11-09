@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+.pnp*
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Prisma
+prisma/*.db
+
+# Env & secrets
+.env
+.env.local
+*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Client-delivered source files (keep out of VCS — may contain real risk data)
+/client-files/
+*.xlsx
+*.xlsm
+!**/fixtures/*.xlsx

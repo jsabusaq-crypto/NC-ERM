@@ -1,0 +1,24 @@
+{
+  "name": "nh-erm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "NH-ERM — Enterprise Risk Management platform for Najran Health Cluster.",
+  "type": "module",
+  "workspaces": [
+    "packages/core",
+    "packages/server",
+    "packages/web"
+  ],
+  "scripts": {
+    "test": "npm run test --workspaces --if-present",
+    "test:core": "npm run test -w @nh-erm/core",
+    "test:server": "npm run test -w @nh-erm/server",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "dev:server": "npm run dev -w @nh-erm/server",
+    "dev:web": "npm run dev -w @nh-erm/web"
+  },
+  "engines": {
+    "node": ">=22.6.0"
+  },
+  "license": "UNLICENSED"
+}
