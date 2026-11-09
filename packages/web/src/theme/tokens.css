@@ -39,7 +39,13 @@
 @font-face {
   font-family: 'Janna LT';
   src: local('Janna LT'), local('JannaLT'), url('/fonts/JannaLT.ttf') format('truetype');
-  font-weight: 400 800;
+  font-weight: 400 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Janna LT';
+  src: local('Janna LT Bold'), local('JannaLT-Bold'), url('/fonts/JannaLT-Bold.ttf') format('truetype');
+  font-weight: 600 800;
   font-display: swap;
 }
 
