@@ -17,6 +17,8 @@ import {
   IMPACT_DOMAINS,
   NAJRAN_ORG_STRUCTURE,
   normalizeOrgName,
+  departmentKpis,
+  DEFAULT_INDICATORS,
   type RiskAssessmentInput,
 } from '@nh-erm/core';
 import { InMemoryAuditStore } from './audit/audit.ts';
@@ -46,6 +48,7 @@ interface StoredRisk {
   residualLevel?: number | null;
   inherentBand?: string | null;
   inherentLabel?: string | null;
+  updateDate?: string | null; // register "تاريخ التحديث" (col51) — drives KPI adherence
 }
 
 const risks = new Map<string, StoredRisk>();
@@ -86,6 +89,7 @@ async function loadCurrentRisks(): Promise<void> {
         residualLevel: (r.residualLevel as number) ?? null,
         inherentBand: (r.inherentBand as string) ?? null,
         inherentLabel: (r.inherentLabel as string) ?? null,
+        updateDate: (r.updateDate as string) ?? null,
       });
     };
     for (const r of data.register ?? []) add(r, 'ACTIVE');
@@ -182,6 +186,22 @@ route('GET', '/api/migration-report', (_req, res) => json(res, 200, migrationRep
 
 // Official organizational structure (§12, signed org chart)
 route('GET', '/api/org-structure', (_req, res) => json(res, 200, NAJRAN_ORG_STRUCTURE));
+
+// KPI — department adherence to the quarterly update cycle (§9), from the register.
+route('GET', '/api/kpi', (_req, res, ctx) => {
+  if (!can(ctx.actor, 'risk:read')) return json(res, 403, { error: 'forbidden' });
+  const active = scopeRecords(ctx.actor, [...risks.values()].filter((r) => !r.deletedAt && r.status === 'ACTIVE'), (r) => r.departmentId);
+  const kpis = departmentKpis(
+    active.map((r) => ({
+      department: r.department ? normalizeOrgName(r.department) : '—',
+      updateDate: r.updateDate ? new Date(r.updateDate) : null,
+    })),
+  );
+  json(res, 200, { config: DEFAULT_INDICATORS, kpis });
+});
+
+// Indicators configuration (§9 — confirmed thresholds, configurable)
+route('GET', '/api/indicators-config', (_req, res) => json(res, 200, DEFAULT_INDICATORS));
 
 // RBAC roles & capabilities reference (§12 official matrix)
 route('GET', '/api/roles', (_req, res) => {

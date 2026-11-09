@@ -169,6 +169,8 @@ const T = {
   demo_note:{ar:"عرض توضيحي حيّ — الحاسبة موصولة بمحرك التقييم الحقيقي في الخادم (/api/assess). باقي الجداول بيانات تجريبية.",en:"Live demo — the calculator is wired to the real server scoring engine (/api/assess). Other tables use demo data."},
   by_level:{ar:"التوزيع حسب المستوى",en:"Distribution by level"},
   by_sector:{ar:"التوزيع حسب القطاع (مع أهم المخاطر)",en:"Distribution by sector (with top risks)"},
+  no_data:{ar:"لا توجد بيانات",en:"No data"},
+  kri_pending:{ar:"{n} خطة تخفيف لأهم المخاطر — نسبة الإنجاز تُحسب من المهام الفرعية بعد تعبئتها من مالك الخطة.",en:"{n} treatment plans for top risks — completion computed from sub-tasks once owners fill them."},
   kri:{ar:"إنجاز خطط المعالجة (KRIs)",en:"Treatment-plan completion (KRIs)"},
   kpi:{ar:"الالتزام بالمواعيد (KPIs)",en:"Deadline adherence (KPIs)"},
   code:{ar:"رمز الخطر",en:"Code"},dept:{ar:"الإدارة",en:"Department"},
@@ -205,7 +207,7 @@ function applyLang(){
   document.querySelectorAll("[data-t]").forEach(el=> el.textContent = tr(el.dataset.t));
   document.getElementById("langBtn").textContent = tr("lang");
   buildControls(); renderResult(lastResult);
-  if(typeof REG!=="undefined"){ renderDashboard(); renderTables(); }
+  if(typeof REG!=="undefined"){ renderDashboard(); renderIndicators(); renderTables(); }
 }
 
 // Tabs
@@ -240,14 +242,23 @@ function renderDashboard(){
       <span style="text-align:end;font-size:13px">${s.count}${s.top?` <span style="color:var(--level_1)" title="top risks">▲${s.top}</span>`:""}</span>
     </div>`).join("");
 }
+const RAG={green:"var(--level_4)",yellow:"var(--level_3)",red:"var(--level_1)"};
 const meters=(arr)=>arr.map(m=>`<div style="margin-bottom:10px">
-  <div style="display:flex;justify-content:space-between;font-size:13px"><span>${m.n}</span><span>${m.p}%</span></div>
-  <div class="bar" style="height:10px"><i style="width:${m.p}%;background:var(--brand-accent)"></i></div></div>`).join("");
-document.getElementById("kri").innerHTML=meters([{n:"IT",p:72},{n:"Nursing",p:55},{n:"Pharmacy",p:88}]);
-document.getElementById("kpi").innerHTML=meters([{n:"IT",p:94},{n:"Nursing",p:61},{n:"Pharmacy",p:79}]);
+  <div style="display:flex;justify-content:space-between;font-size:13px"><span>${esc(m.n)}</span><span>${m.p}%</span></div>
+  <div class="bar" style="height:10px"><i style="width:${m.p}%;background:${m.color||'var(--brand-accent)'}"></i></div></div>`).join("");
+function renderIndicators(){
+  // KPI: real department adherence (quarterly cycle, first-week on-time), RAG colored
+  const kpi=(KPIS||[]).slice(0,8).map(k=>({n:k.department,p:k.adherencePct,color:RAG[k.rag]}));
+  document.getElementById("kpi").innerHTML = kpi.length? meters(kpi)
+    : `<p class="muted">${tr("no_data")}</p>`;
+  // KRI: treatment plans — completion computed from sub-tasks once owners fill them
+  const pending=TOP.length;
+  document.getElementById("kri").innerHTML=
+    `<p class="muted">${fmt(tr("kri_pending"),{n:pending})}</p>`;
+}
 
 // Real data loaded from the migrated official file
-let REG=[], TOP=[], NEW=[], REPORT=null, SECTORS=[];
+let REG=[], TOP=[], NEW=[], REPORT=null, SECTORS=[], KPIS=[];
 const esc=s=>String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 const fmt=(s,o)=>s.replace(/\{(\w+)\}/g,(_,k)=>o[k]);
 const lvlBadge=r=> r.residualLevel? `<span class="badge" style="background:var(--level_${r.residualLevel})">${tr("level")} ${r.residualLevel}</span>`:"—";
@@ -255,14 +266,15 @@ const name=r=> lang==="ar"? (r.department||"—") : (r.department||"—");
 
 async function loadData(){
   try{
-    const [a,b,c,d,e]=await Promise.all([
+    const [a,b,c,d,e,f]=await Promise.all([
       fetch("/api/risks").then(x=>x.json()),
       fetch("/api/top-risks").then(x=>x.json()),
       fetch("/api/new-risks").then(x=>x.json()),
       fetch("/api/migration-report").then(x=>x.json()),
       fetch("/api/by-sector").then(x=>x.json()),
+      fetch("/api/kpi").then(x=>x.json()),
     ]);
-    REG=a.risks||[]; TOP=b.risks||[]; NEW=c.risks||[]; REPORT=d; SECTORS=(e.sectors)||[];
+    REG=a.risks||[]; TOP=b.risks||[]; NEW=c.risks||[]; REPORT=d; SECTORS=(e.sectors)||[]; KPIS=(f.kpis)||[];
   }catch(e){ console.error(e); }
 }
 function renderTables(){
@@ -322,7 +334,7 @@ function renderResult(res){
     row("is_top",res.isTopRisk?tr("yes"):tr("no"),res.isTopRisk?"--level_1":"--level_5");
 }
 
-Promise.all([loadDomains(), loadData()]).then(()=>{ renderDashboard(); renderTables(); applyLang(); });
+Promise.all([loadDomains(), loadData()]).then(()=>{ renderDashboard(); renderIndicators(); renderTables(); applyLang(); });
 </script>
 </body>
 </html>

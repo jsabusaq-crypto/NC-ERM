@@ -242,14 +242,25 @@ tables, kept configurable for future methodology changes.
 
 ---
 
-## 9. KRIs & KPIs
+## 9. KRIs & KPIs — ✅ CONFIRMED thresholds
 
-- **Treatment-plan indicators (KRIs):** track each corrective action with its owner, deadline,
-  completion %, and overdue status, with alerts when a deadline nears or passes. Alerts go via
-  **both** channels together: **email + in-platform notification** (confirmed).
-- **Department performance indicators (KPIs):** adherence to deadlines for raising/updating the
-  register, delay % per department, and department-vs-department comparison.
-- Exact indicator details (formulas, thresholds, responsibilities) will arrive from the client later.
+Confirmed rules (encoded in `packages/core/src/indicators.ts`, all configurable):
+
+- **Treatment-plan indicators (KRIs):** track each corrective action with owner, deadline,
+  completion %, and overdue status.
+  - "Approaching deadline" alert fires **30 days** before the due date.
+  - Once overdue, a reminder repeats **weekly** until the plan is closed.
+  - **Completion % is computed from sub-tasks** (not entered manually).
+  - Alerts go via **both** channels together: **email + in-platform** (confirmed).
+  - Recipients: plan owner + department manager + ERM manager *(default — not explicitly
+    specified; configurable)*.
+- **Department performance indicators (KPIs):**
+  - Register update cycle = **quarterly** (and on demand).
+  - A risk is **on-time** if updated within the **first week (7 days)** of the quarter.
+  - Adherence % = on-time / total; delay % = late / total.
+  - **RAG targets: ≥ 90% green, 70–< 90% yellow, < 70% red** — the same bands are reused in
+    **reports and mitigation plans** (confirmed).
+  - Department-vs-department comparison.
 
 ---
 
@@ -279,7 +290,17 @@ tables, kept configurable for future methodology changes.
 
 ## 12. Roles & Access Control (RBAC)
 
-- The detailed permission matrix will be sent later; the confirmed roles so far are preliminary.
+- **Official permission matrix — ✅ CONFIRMED** (2 groups, 8 roles; encoded in
+  `packages/server/src/auth/rbac.ts`):
+  - **Group 1 — full permissions across the whole platform:** Cluster CEO
+    (الرئيس التنفيذي للتجمع), Executive GRC Director
+    (مدير الإدارة التنفيذية للحوكمة والمخاطر والالتزام), ERM Manager
+    (مدير إدارة المخاطر المؤسسية).
+  - **Group 2 — full permissions for their OWN department only; dashboard & lists scoped to
+    that department:** Deputy (النائب), Department Manager (مدير الإدارة), Risk Owner
+    (مالك الخطر), Mitigation Plan Owner (مالك خطط التخفيف), Risk Champion (رائد الخطر).
+  - Group-2 edits apply directly; the new-risk approval step (§13) is the management level
+    (Department Manager / Deputy).
 - **"Department user"** edits (roles with "full permissions within the department") are applied
   **directly, without later approval** — approval is required **only** when a **"New Risk"** is
   entered for the first time (see §7 workflow).
@@ -342,9 +363,11 @@ Department Manager's approval.
 - ~~Inherent band ranges (§8.3)~~ — ✅ **RESOLVED** = official heat map.
 - ~~Control adequacy derivation (§8.4)~~ — ✅ **RESOLVED** = yes-count (98% fit).
 - ~~5×5 → priority grid (§8.5)~~ — ✅ **RESOLVED** = official grid.
-- "Deputy" org level (§12) — `⚠ VERIFY` (still open).
-- **Detailed RBAC permission matrix** (§12) — still pending from client.
-- KRI/KPI exact formulas & thresholds (§9) — still pending from client.
+- ~~"Deputy" org level (§12)~~ — ✅ **RESOLVED**: a Group-2 role (own-department scope).
+- ~~Detailed RBAC permission matrix (§12)~~ — ✅ **RESOLVED**: 2 groups, 8 roles (encoded).
+- ~~KRI/KPI formulas & thresholds (§9)~~ — ✅ **RESOLVED**: encoded in `indicators.ts`.
+- **Sub-task breakdown per mitigation plan** — needed so KRI completion % can be computed
+  (owners will enter sub-tasks; the plans currently hold "يحدد من مالك الخطر" placeholders).
 
 ---
 

@@ -6,3 +6,4 @@ export * from './top-risks-sync.ts';
 export * from './import-normalize.ts';
 export * from './labels.ts';
 export * from './org-structure.ts';
+export * from './indicators.ts';
