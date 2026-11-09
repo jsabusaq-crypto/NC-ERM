@@ -42,7 +42,7 @@ def cell_text(cell, text, bold=False, color=None, align='right', size=9):
     set_rtl(p)
     r = p.add_run(str(text)); r.font.size = Pt(size); r.bold = bold
     if color: r.font.color.rgb = color
-    r.font.name = 'Arial'
+    r.font.name = 'Janna LT'
 
 
 def main():
@@ -101,9 +101,9 @@ def main():
 
     # title bar
     t = doc.add_paragraph(); t.alignment = WD_ALIGN_PARAGRAPH.CENTER; set_rtl(t)
-    r = t.add_run(a.subject); r.bold = True; r.font.size = Pt(16); r.font.color.rgb = BRAND; r.font.name = 'Arial'
+    r = t.add_run(a.subject); r.bold = True; r.font.size = Pt(16); r.font.color.rgb = BRAND; r.font.name = 'Janna LT'
     sub = doc.add_paragraph(); sub.alignment = WD_ALIGN_PARAGRAPH.CENTER; set_rtl(sub)
-    rs = sub.add_run('تجمع نجران الصحي · منصة NH-ERM لإدارة المخاطر المؤسسية'); rs.font.size = Pt(10); rs.font.color.rgb = RGBColor(0x5f, 0x74, 0x88); rs.font.name = 'Arial'
+    rs = sub.add_run('تجمع نجران الصحي · منصة NH-ERM لإدارة المخاطر المؤسسية'); rs.font.size = Pt(10); rs.font.color.rgb = RGBColor(0x5f, 0x74, 0x88); rs.font.name = 'Janna LT'
 
     # meta
     meta = doc.add_table(rows=1, cols=3); meta.alignment = WD_TABLE_ALIGNMENT.CENTER
@@ -113,7 +113,7 @@ def main():
         c = meta.rows[0].cells[i]; shade(c, 'F6F9FC')
         cell_text(c, k, bold=True, color=BRAND, align='center', size=9)
         pp = c.add_paragraph(); pp.alignment = WD_ALIGN_PARAGRAPH.CENTER; set_rtl(pp)
-        rr = pp.add_run(str(v)); rr.font.size = Pt(10); rr.bold = True; rr.font.name = 'Arial'
+        rr = pp.add_run(str(v)); rr.font.size = Pt(10); rr.bold = True; rr.font.name = 'Janna LT'
     doc.add_paragraph()
 
     # explanatory introduction
@@ -130,7 +130,7 @@ def main():
         'أدناه لكل خطر: الإدارة المسؤولة، ووصفه، ومستوى احتماليته وأثره، وتقييمه الكامن، ومستواه المتبقّي. '
         'ويُستخدم هذا التقرير لمتابعة أهم المخاطر وخطط معالجتها ودعم اتخاذ القرار على مستوى التجمع.')
     ri = intro_p.add_run(intro_compliance if compliance else intro_risks)
-    ri.font.size = Pt(10); ri.font.name = 'Arial'; ri.font.color.rgb = RGBColor(0x30, 0x45, 0x5a)
+    ri.font.size = Pt(10); ri.font.name = 'Janna LT'; ri.font.color.rgb = RGBColor(0x30, 0x45, 0x5a)
     doc.add_paragraph()
 
     if compliance:
@@ -170,7 +170,7 @@ def main():
     # sign-off / approval block
     doc.add_paragraph()
     so_t = doc.add_paragraph(); so_t.alignment = WD_ALIGN_PARAGRAPH.CENTER; set_rtl(so_t)
-    rso = so_t.add_run('اعتماد التقرير'); rso.bold = True; rso.font.size = Pt(12); rso.font.color.rgb = BRAND; rso.font.name = 'Arial'
+    rso = so_t.add_run('اعتماد التقرير'); rso.bold = True; rso.font.size = Pt(12); rso.font.color.rgb = BRAND; rso.font.name = 'Janna LT'
     sign = doc.add_table(rows=1, cols=4); sign.style = 'Table Grid'; sign.alignment = WD_TABLE_ALIGNMENT.CENTER
     # logical cells L→R: [التوقيع, التاريخ, الاسم والمنصب, البند] so البند shows rightmost in RTL reading
     for i, h in enumerate(['التوقيع', 'التاريخ', 'الاسم والمنصب', 'البند']):
@@ -188,7 +188,7 @@ def main():
     # footer note
     doc.add_paragraph()
     f = doc.add_paragraph(); f.alignment = WD_ALIGN_PARAGRAPH.CENTER; set_rtl(f)
-    rf = f.add_run('أُصدر آلياً من منصة NH-ERM — تجمع نجران الصحي'); rf.font.size = Pt(8); rf.font.color.rgb = RGBColor(0x90, 0xa1, 0xb4); rf.font.name = 'Arial'
+    rf = f.add_run('أُصدر آلياً من منصة NH-ERM — تجمع نجران الصحي'); rf.font.size = Pt(8); rf.font.color.rgb = RGBColor(0x90, 0xa1, 0xb4); rf.font.name = 'Janna LT'
 
     doc.save(a.out)
     n = len(deps) if compliance else len(rows)

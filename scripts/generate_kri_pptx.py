@@ -33,7 +33,7 @@ def rtl(p):
     pPr.set('rtl', '1')
 
 
-def txt(tf, text, size, color, bold=False, align=PP_ALIGN.RIGHT, font='Arial'):
+def txt(tf, text, size, color, bold=False, align=PP_ALIGN.RIGHT, font='Janna LT'):
     tf.word_wrap = True
     p = tf.paragraphs[0]
     p.alignment = align
