@@ -20,7 +20,7 @@ import {
   type RiskAssessmentInput,
 } from '@nh-erm/core';
 import { InMemoryAuditStore } from './audit/audit.ts';
-import { can, type Actor } from './auth/rbac.ts';
+import { can, scopeRecords, ROLE_LABELS, ROLE_CAPABILITIES, type Actor, type RoleKey } from './auth/rbac.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(__dirname, '..', 'public');
@@ -155,24 +155,25 @@ route('POST', '/api/assess', (_req, res, ctx) => {
 // The 24 impact domains (for building the UI form).
 route('GET', '/api/domains', (_req, res) => json(res, 200, { domains: IMPACT_DOMAINS }));
 
-// List the official register — ACTIVE risks, soft-deleted excluded (§6)
+// List the official register — ACTIVE risks, soft-deleted excluded (§6).
+// Group 2 sees only their own department (§12 "dashboard/lists = own dept").
 route('GET', '/api/risks', (_req, res, ctx) => {
   if (!can(ctx.actor, 'risk:read')) return json(res, 403, { error: 'forbidden' });
-  const active = [...risks.values()].filter((r) => !r.deletedAt && r.status === 'ACTIVE');
+  const active = scopeRecords(ctx.actor, [...risks.values()].filter((r) => !r.deletedAt && r.status === 'ACTIVE'), (r) => r.departmentId);
   json(res, 200, { count: active.length, risks: active });
 });
 
 // List top risks — §4
 route('GET', '/api/top-risks', (_req, res, ctx) => {
   if (!can(ctx.actor, 'risk:read')) return json(res, 403, { error: 'forbidden' });
-  const top = [...risks.values()].filter((r) => !r.deletedAt && r.isTopRisk);
+  const top = scopeRecords(ctx.actor, [...risks.values()].filter((r) => !r.deletedAt && r.isTopRisk), (r) => r.departmentId);
   json(res, 200, { count: top.length, risks: top });
 });
 
 // List new/pending risks — §13 staging area
 route('GET', '/api/new-risks', (_req, res, ctx) => {
   if (!can(ctx.actor, 'risk:read')) return json(res, 403, { error: 'forbidden' });
-  const pending = [...risks.values()].filter((r) => !r.deletedAt && r.status === 'PENDING_APPROVAL');
+  const pending = scopeRecords(ctx.actor, [...risks.values()].filter((r) => !r.deletedAt && r.status === 'PENDING_APPROVAL'), (r) => r.departmentId);
   json(res, 200, { count: pending.length, risks: pending });
 });
 
@@ -181,6 +182,16 @@ route('GET', '/api/migration-report', (_req, res) => json(res, 200, migrationRep
 
 // Official organizational structure (§12, signed org chart)
 route('GET', '/api/org-structure', (_req, res) => json(res, 200, NAJRAN_ORG_STRUCTURE));
+
+// RBAC roles & capabilities reference (§12 official matrix)
+route('GET', '/api/roles', (_req, res) => {
+  const roles = (Object.keys(ROLE_LABELS) as RoleKey[]).map((key) => ({
+    key,
+    ...ROLE_LABELS[key],
+    capabilities: ROLE_CAPABILITIES[key],
+  }));
+  json(res, 200, { roles });
+});
 
 // Risk distribution by sector and department, computed from the register (§10)
 route('GET', '/api/by-sector', (_req, res, ctx) => {

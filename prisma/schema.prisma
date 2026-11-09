@@ -57,14 +57,16 @@ model Department {
 // RBAC (§12) — platform-only accounts, no SSO
 // ─────────────────────────────────────────────────────────────────────────────
 enum RoleKey {
-  ERM_MANAGER // Group 1 — full permissions; creates/activates accounts
-  CLUSTER_CEO // full platform permissions
-  DEPARTMENT_MANAGER // approves new risks; full permissions within department
-  RISK_OWNER // owns risks within a department
-  DEPARTMENT_USER // edits within department (applied directly, no later approval)
-  VIEWER // read-only
-  AUDITOR // read audit log
-  SYSTEM_ADMIN // audit search/filter screen (§7)
+  // Group 1 — full permissions across the whole platform (§12)
+  CLUSTER_CEO // الرئيس التنفيذي للتجمع
+  GRC_DIRECTOR // مدير الإدارة التنفيذية للحوكمة والمخاطر والالتزام
+  ERM_MANAGER // مدير إدارة المخاطر المؤسسية
+  // Group 2 — full permissions for their own department only; dashboard = own dept
+  DEPUTY // النائب
+  DEPARTMENT_MANAGER // مدير الإدارة (also approves new risks §13)
+  RISK_OWNER // مالك الخطر
+  MITIGATION_OWNER // مالك خطط التخفيف
+  RISK_CHAMPION // رائد الخطر
 }
 
 model Role {

@@ -13,14 +13,16 @@ import { DEFAULT_METHODOLOGY, validateMethodology } from '@nh-erm/core';
 const prisma = new PrismaClient();
 
 const ROLES: { key: string; nameAr: string; nameEn: string }[] = [
-  { key: 'ERM_MANAGER', nameAr: 'مدير إدارة المخاطر المؤسسية', nameEn: 'ERM Manager' },
+  // Group 1 — full platform
   { key: 'CLUSTER_CEO', nameAr: 'الرئيس التنفيذي للتجمع', nameEn: 'Cluster CEO' },
+  { key: 'GRC_DIRECTOR', nameAr: 'مدير الإدارة التنفيذية للحوكمة والمخاطر والالتزام', nameEn: 'Executive GRC Director' },
+  { key: 'ERM_MANAGER', nameAr: 'مدير إدارة المخاطر المؤسسية', nameEn: 'ERM Manager' },
+  // Group 2 — own department only
+  { key: 'DEPUTY', nameAr: 'النائب', nameEn: 'Deputy' },
   { key: 'DEPARTMENT_MANAGER', nameAr: 'مدير الإدارة', nameEn: 'Department Manager' },
   { key: 'RISK_OWNER', nameAr: 'مالك الخطر', nameEn: 'Risk Owner' },
-  { key: 'DEPARTMENT_USER', nameAr: 'مستخدم الإدارة', nameEn: 'Department User' },
-  { key: 'VIEWER', nameAr: 'مطّلع', nameEn: 'Viewer' },
-  { key: 'AUDITOR', nameAr: 'مدقّق', nameEn: 'Auditor' },
-  { key: 'SYSTEM_ADMIN', nameAr: 'مدير النظام', nameEn: 'System Admin' },
+  { key: 'MITIGATION_OWNER', nameAr: 'مالك خطط التخفيف', nameEn: 'Mitigation Plan Owner' },
+  { key: 'RISK_CHAMPION', nameAr: 'رائد الخطر', nameEn: 'Risk Champion' },
 ];
 
 async function main() {
