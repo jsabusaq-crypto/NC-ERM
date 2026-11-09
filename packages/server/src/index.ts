@@ -8,9 +8,15 @@
  */
 
 import http from 'node:http';
-import { assessRisk, syncTopRisk, type RiskAssessmentInput } from '@nh-erm/core';
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+import { assessRisk, syncTopRisk, IMPACT_DOMAINS, type RiskAssessmentInput } from '@nh-erm/core';
 import { InMemoryAuditStore } from './audit/audit.ts';
 import { can, type Actor } from './auth/rbac.ts';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const PUBLIC_DIR = join(__dirname, '..', 'public');
 
 const PORT = Number(process.env.PORT ?? 4000);
 const audit = new InMemoryAuditStore();
@@ -51,6 +57,27 @@ function route(method: string, path: string, handler: Handler): void {
 // ── Routes ───────────────────────────────────────────────────────────────────
 
 route('GET', '/health', (_req, res) => json(res, 200, { ok: true, service: 'nh-erm', ts: new Date().toISOString() }));
+
+// Serve the self-contained demo UI (no build step, no npm deps).
+route('GET', '/', async (_req, res) => {
+  try {
+    const html = await readFile(join(PUBLIC_DIR, 'index.html'));
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+    res.end(html);
+  } catch {
+    json(res, 404, { error: 'demo UI not found' });
+  }
+});
+
+// Live assessment (no persistence) — lets the UI show the real engine output.
+route('POST', '/api/assess', (_req, res, ctx) => {
+  const b = ctx.body as { assessment?: RiskAssessmentInput };
+  if (!b?.assessment) return json(res, 400, { error: 'assessment required' });
+  json(res, 200, assessRisk(b.assessment));
+});
+
+// The 24 impact domains (for building the UI form).
+route('GET', '/api/domains', (_req, res) => json(res, 200, { domains: IMPACT_DOMAINS }));
 
 // List active risks (soft-deleted excluded) — §6
 route('GET', '/api/risks', (_req, res, ctx) => {
