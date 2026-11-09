@@ -57,6 +57,7 @@
     <button class="tab active" data-tab="dashboard" data-t="nav_dashboard"></button>
     <button class="tab" data-tab="register" data-t="nav_register"></button>
     <button class="tab" data-tab="top" data-t="nav_top"></button>
+    <button class="tab" data-tab="newr" data-t="nav_new"></button>
     <button class="tab" data-tab="calc" data-t="nav_calc"></button>
     <button class="tab" id="langBtn"></button>
   </nav>
@@ -85,10 +86,13 @@
   <section id="register" class="hide">
     <div class="card">
       <h3 data-t="nav_register"></h3>
+      <div id="regBanner" class="tophint"></div>
+      <div style="overflow:auto;max-height:65vh">
       <table><thead><tr>
-        <th data-t="code"></th><th data-t="dept"></th><th data-t="inherent"></th>
-        <th data-t="level"></th><th data-t="top"></th>
+        <th data-t="code"></th><th data-t="dept"></th><th data-t="statement"></th>
+        <th data-t="inherent"></th><th data-t="level"></th><th data-t="top"></th>
       </tr></thead><tbody id="regBody"></tbody></table>
+      </div>
     </div>
   </section>
 
@@ -96,9 +100,23 @@
   <section id="top" class="hide">
     <div class="card">
       <h3 data-t="nav_top"></h3>
+      <div id="topBanner" class="tophint"></div>
+      <div style="overflow:auto;max-height:65vh">
       <table><thead><tr>
-        <th data-t="code"></th><th data-t="dept"></th><th data-t="inherent"></th><th data-t="level"></th>
+        <th data-t="code"></th><th data-t="dept"></th><th data-t="statement"></th><th data-t="level"></th>
       </tr></thead><tbody id="topBody"></tbody></table>
+      </div>
+    </div>
+  </section>
+
+  <!-- NEW RISKS (pending approval) -->
+  <section id="newr" class="hide">
+    <div class="card">
+      <h3 data-t="nav_new"></h3>
+      <div id="newBanner" class="tophint"></div>
+      <table><thead><tr>
+        <th data-t="code"></th><th data-t="dept"></th><th data-t="statement"></th><th data-t="status_col"></th>
+      </tr></thead><tbody id="newBody"></tbody></table>
     </div>
   </section>
 
@@ -132,7 +150,14 @@ const T = {
   nav_dashboard:{ar:"لوحة القيادة",en:"Dashboard"},
   nav_register:{ar:"سجل المخاطر",en:"Risk Register"},
   nav_top:{ar:"أهم المخاطر",en:"Top Risks"},
+  nav_new:{ar:"المخاطر الجديدة",en:"New Risks"},
   nav_calc:{ar:"حاسبة التقييم",en:"Live Calculator"},
+  statement:{ar:"وصف الخطر",en:"Risk statement"},
+  status_col:{ar:"الحالة",en:"Status"},
+  pending:{ar:"قيد الاعتماد",en:"Pending approval"},
+  migrated:{ar:"تم ترحيل {n} خطراً فعلياً من الملف الرسمي لتجمع نجران الصحي — منها {t} ضمن أهم المخاطر (المستوى ١ و٢)، و{e} خلية خطأ (‎#REF!‎) عوملت كخلية فارغة.",
+            en:"Migrated {n} real risks from the official Najran file — {t} are Top Risks (levels 1-2); {e} error cells (#REF!) treated as empty."},
+  new_banner:{ar:"{n} مخاطر جديدة في منطقة الانتظار — تحتاج اعتماد مدير الإدارة قبل دخول السجل الرسمي.",en:"{n} new risks in staging — need Department-Manager approval before entering the official register."},
   lang:{ar:"English",en:"العربية"},
   demo_note:{ar:"عرض توضيحي حيّ — الحاسبة موصولة بمحرك التقييم الحقيقي في الخادم (/api/assess). باقي الجداول بيانات تجريبية.",en:"Live demo — the calculator is wired to the real server scoring engine (/api/assess). Other tables use demo data."},
   by_level:{ar:"التوزيع حسب المستوى",en:"Distribution by level"},
@@ -172,6 +197,7 @@ function applyLang(){
   document.querySelectorAll("[data-t]").forEach(el=> el.textContent = tr(el.dataset.t));
   document.getElementById("langBtn").textContent = tr("lang");
   buildControls(); renderResult(lastResult);
+  if(typeof REG!=="undefined"){ renderDashboard(); renderTables(); }
 }
 
 // Tabs
@@ -179,42 +205,64 @@ document.querySelectorAll(".tab[data-tab]").forEach(btn=>{
   btn.onclick=()=>{
     document.querySelectorAll(".tab[data-tab]").forEach(b=>b.classList.remove("active"));
     btn.classList.add("active");
-    ["dashboard","register","top","calc"].forEach(id=>document.getElementById(id).classList.add("hide"));
+    ["dashboard","register","top","newr","calc"].forEach(id=>document.getElementById(id).classList.add("hide"));
     document.getElementById(btn.dataset.tab).classList.remove("hide");
   };
 });
 document.getElementById("langBtn").onclick=()=>{ lang=lang==="ar"?"en":"ar"; applyLang(); };
 
-// Dashboard demo
-const levels=[{l:1,c:4},{l:2,c:9},{l:3,c:21},{l:4,c:34},{l:5,c:105}];
-const maxc=Math.max(...levels.map(x=>x.c));
-document.getElementById("levelBars").innerHTML=levels.map(x=>`
-  <div style="display:grid;grid-template-columns:90px 1fr 36px;align-items:center;gap:8px">
-    <span class="badge" style="background:var(--level_${x.l})">${tr("level")} ${x.l}</span>
-    <div class="bar"><i style="width:${x.c/maxc*100}%;background:var(--level_${x.l})"></i></div>
-    <span style="text-align:end">${x.c}</span>
-  </div>`).join("");
+// Dashboard — computed from the real migrated register
+function renderDashboard(){
+  const counts={1:0,2:0,3:0,4:0,5:0};
+  REG.forEach(r=>{ if(r.residualLevel>=1&&r.residualLevel<=5) counts[r.residualLevel]++; });
+  const levels=[1,2,3,4,5].map(l=>({l,c:counts[l]}));
+  const maxc=Math.max(1,...levels.map(x=>x.c));
+  document.getElementById("levelBars").innerHTML=levels.map(x=>`
+    <div style="display:grid;grid-template-columns:90px 1fr 36px;align-items:center;gap:8px">
+      <span class="badge" style="background:var(--level_${x.l})">${tr("level")} ${x.l}</span>
+      <div class="bar"><i style="width:${x.c/maxc*100}%;background:var(--level_${x.l})"></i></div>
+      <span style="text-align:end">${x.c}</span>
+    </div>`).join("");
+}
 const meters=(arr)=>arr.map(m=>`<div style="margin-bottom:10px">
   <div style="display:flex;justify-content:space-between;font-size:13px"><span>${m.n}</span><span>${m.p}%</span></div>
   <div class="bar" style="height:10px"><i style="width:${m.p}%;background:var(--brand-accent)"></i></div></div>`).join("");
 document.getElementById("kri").innerHTML=meters([{n:"IT",p:72},{n:"Nursing",p:55},{n:"Pharmacy",p:88}]);
 document.getElementById("kpi").innerHTML=meters([{n:"IT",p:94},{n:"Nursing",p:61},{n:"Pharmacy",p:79}]);
 
-// Register / Top demo
-const risks=[
-  {code:"NC-001",dept:"IT",inh:25,lvl:1,top:true},
-  {code:"NC-002",dept:"Nursing",inh:12,lvl:3,top:false},
-  {code:"NC-003",dept:"Pharmacy",inh:20,lvl:2,top:true},
-  {code:"NC-004",dept:"Finance",inh:4,lvl:5,top:false},
-];
+// Real data loaded from the migrated official file
+let REG=[], TOP=[], NEW=[], REPORT=null;
+const esc=s=>String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const fmt=(s,o)=>s.replace(/\{(\w+)\}/g,(_,k)=>o[k]);
+const lvlBadge=r=> r.residualLevel? `<span class="badge" style="background:var(--level_${r.residualLevel})">${tr("level")} ${r.residualLevel}</span>`:"—";
+const name=r=> lang==="ar"? (r.department||"—") : (r.department||"—");
+
+async function loadData(){
+  try{
+    const [a,b,c,d]=await Promise.all([
+      fetch("/api/risks").then(x=>x.json()),
+      fetch("/api/top-risks").then(x=>x.json()),
+      fetch("/api/new-risks").then(x=>x.json()),
+      fetch("/api/migration-report").then(x=>x.json()),
+    ]);
+    REG=a.risks||[]; TOP=b.risks||[]; NEW=c.risks||[]; REPORT=d;
+  }catch(e){ console.error(e); }
+}
 function renderTables(){
-  document.getElementById("regBody").innerHTML=risks.map(r=>`<tr>
-    <td>${r.code}</td><td>${r.dept}</td><td>${r.inh}</td>
-    <td><span class="badge" style="background:var(--level_${r.lvl})">${tr("level")} ${r.lvl}</span></td>
-    <td>${r.top?tr("yes"):tr("no")}</td></tr>`).join("");
-  document.getElementById("topBody").innerHTML=risks.filter(r=>r.top).map(r=>`<tr>
-    <td>${r.code}</td><td>${r.dept}</td><td>${r.inh}</td>
-    <td><span class="badge" style="background:var(--level_${r.lvl})">${tr("level")} ${r.lvl}</span></td></tr>`).join("");
+  document.getElementById("regBody").innerHTML=REG.map(r=>`<tr>
+    <td>${esc(r.code)}</td><td>${esc(name(r))}</td><td>${esc((r.title||"").slice(0,70))}</td>
+    <td>${r.inherentBand?`<span class="badge" style="background:var(--band_${r.inherentBand})">${esc(r.inherentLabel||r.inherentBand)}</span>`:"—"}</td>
+    <td>${lvlBadge(r)}</td><td>${r.isTopRisk?tr("yes"):tr("no")}</td></tr>`).join("");
+  document.getElementById("topBody").innerHTML=TOP.map(r=>`<tr>
+    <td>${esc(r.code)}</td><td>${esc(name(r))}</td><td>${esc((r.title||"").slice(0,70))}</td><td>${lvlBadge(r)}</td></tr>`).join("");
+  document.getElementById("newBody").innerHTML=NEW.map(r=>`<tr>
+    <td>${esc(r.code)}</td><td>${esc(name(r))}</td><td>${esc((r.title||"").slice(0,70))}</td>
+    <td><span class="badge" style="background:var(--band_high)">${tr("pending")}</span></td></tr>`).join("");
+  if(REPORT&&REPORT.registerImported!=null){
+    document.getElementById("regBanner").textContent=fmt(tr("migrated"),{n:REPORT.registerImported,t:REPORT.registerTopRisks,e:REPORT.errorCells});
+    document.getElementById("topBanner").textContent=`${TOP.length} ${tr("nav_top")}`;
+  }
+  document.getElementById("newBanner").textContent=fmt(tr("new_banner"),{n:NEW.length});
 }
 
 // Calculator
@@ -257,7 +305,7 @@ function renderResult(res){
     row("is_top",res.isTopRisk?tr("yes"):tr("no"),res.isTopRisk?"--level_1":"--level_5");
 }
 
-loadDomains().then(()=>{ renderTables(); applyLang(); });
+Promise.all([loadDomains(), loadData()]).then(()=>{ renderDashboard(); renderTables(); applyLang(); });
 </script>
 </body>
 </html>

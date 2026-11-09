@@ -31,9 +31,64 @@ interface StoredRisk {
   isTopRisk: boolean;
   deletedAt: string | null;
   updatedAt: string;
+  // Display fields (populated when migrated from the official file).
+  title?: string | null;
+  department?: string | null;
+  sector?: string | null;
+  owner?: string | null;
+  residualLevel?: number | null;
+  inherentBand?: string | null;
+  inherentLabel?: string | null;
 }
 
 const risks = new Map<string, StoredRisk>();
+let migrationReport: unknown = null;
+
+/** Load risks migrated from the official Excel file (scripts/extract_risks.py), if present. */
+async function loadCurrentRisks(): Promise<void> {
+  try {
+    const raw = await readFile(join(__dirname, '..', 'data', 'current-risks.json'), 'utf8');
+    const data = JSON.parse(raw) as {
+      register: Record<string, unknown>[];
+      newRisks: Record<string, unknown>[];
+      report: unknown;
+    };
+    migrationReport = data.report;
+    const add = (r: Record<string, unknown>, status: 'ACTIVE' | 'PENDING_APPROVAL') => {
+      // Prefix by status so a pending "new risk" sharing a code with a register
+      // risk does not overwrite it (both are kept, as in the real two sheets).
+      const id = (status === 'ACTIVE' ? 'r_' : 'rn_') + String(r.code);
+      risks.set(id, {
+        id,
+        code: String(r.code),
+        departmentId: (r.department as string) ?? 'unknown',
+        status,
+        input: {
+          likelihood: (r.likelihood as 1) ?? 1,
+          impacts: (r.impacts as Record<string, number>) ?? {},
+          controlAnswers: [r.controlActivated, r.controlShared, r.controlComplied, r.controlEffective].map(Boolean),
+        },
+        residualPriority: (r.residualPriority as number) ?? 25,
+        isTopRisk: status === 'ACTIVE' && Boolean(r.isTopRisk),
+        deletedAt: null,
+        updatedAt: (r.lastUpdate as string) ?? new Date().toISOString(),
+        title: (r.title as string) ?? null,
+        department: (r.department as string) ?? null,
+        sector: (r.sector as string) ?? null,
+        owner: (r.owner as string) ?? null,
+        residualLevel: (r.residualLevel as number) ?? null,
+        inherentBand: (r.inherentBand as string) ?? null,
+        inherentLabel: (r.inherentLabel as string) ?? null,
+      });
+    };
+    for (const r of data.register ?? []) add(r, 'ACTIVE');
+    for (const r of data.newRisks ?? []) add(r, 'PENDING_APPROVAL');
+    // eslint-disable-next-line no-console
+    console.log(`Loaded ${risks.size} risks migrated from the official file.`);
+  } catch {
+    // No migration file yet — start empty.
+  }
+}
 
 // Dev actor — in production this comes from the authenticated session.
 const DEV_ACTOR: Actor = { userId: 'dev', roles: ['ERM_MANAGER'], departmentId: null };
@@ -79,10 +134,10 @@ route('POST', '/api/assess', (_req, res, ctx) => {
 // The 24 impact domains (for building the UI form).
 route('GET', '/api/domains', (_req, res) => json(res, 200, { domains: IMPACT_DOMAINS }));
 
-// List active risks (soft-deleted excluded) — §6
+// List the official register — ACTIVE risks, soft-deleted excluded (§6)
 route('GET', '/api/risks', (_req, res, ctx) => {
   if (!can(ctx.actor, 'risk:read')) return json(res, 403, { error: 'forbidden' });
-  const active = [...risks.values()].filter((r) => !r.deletedAt);
+  const active = [...risks.values()].filter((r) => !r.deletedAt && r.status === 'ACTIVE');
   json(res, 200, { count: active.length, risks: active });
 });
 
@@ -92,6 +147,16 @@ route('GET', '/api/top-risks', (_req, res, ctx) => {
   const top = [...risks.values()].filter((r) => !r.deletedAt && r.isTopRisk);
   json(res, 200, { count: top.length, risks: top });
 });
+
+// List new/pending risks — §13 staging area
+route('GET', '/api/new-risks', (_req, res, ctx) => {
+  if (!can(ctx.actor, 'risk:read')) return json(res, 403, { error: 'forbidden' });
+  const pending = [...risks.values()].filter((r) => !r.deletedAt && r.status === 'PENDING_APPROVAL');
+  json(res, 200, { count: pending.length, risks: pending });
+});
+
+// Migration report from the official-file import (§3)
+route('GET', '/api/migration-report', (_req, res) => json(res, 200, migrationReport ?? { note: 'no migration loaded' }));
 
 // Create a risk (enters PENDING_APPROVAL staging — §13)
 route('POST', '/api/risks', async (_req, res, ctx) => {
@@ -219,6 +284,7 @@ function cryptoId(): string {
 
 // Only listen when run directly, not when imported by tests.
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop() ?? '')) {
+  await loadCurrentRisks();
   server.listen(PORT, () => {
     // eslint-disable-next-line no-console
     console.log(`NH-ERM API listening on http://localhost:${PORT}`);

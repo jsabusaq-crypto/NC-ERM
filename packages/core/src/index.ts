@@ -4,3 +4,4 @@ export * from './methodology.ts';
 export * from './risk-scoring.ts';
 export * from './top-risks-sync.ts';
 export * from './import-normalize.ts';
+export * from './labels.ts';
