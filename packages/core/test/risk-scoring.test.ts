@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import {
   aggregateImpact,
   assessRisk,
-  bandForInherentScore,
+  inherentBandFor,
   computeInherent,
   controlAdequacyFromAnswers,
   isTopRisk,
@@ -52,23 +52,22 @@ test('aggregateImpact: sum_capped mode caps at 5', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // §8.3 inherent band
 // ─────────────────────────────────────────────────────────────────────────────
-test('bandForInherentScore: default band boundaries', () => {
-  assert.equal(bandForInherentScore(1), 'very_low');
-  assert.equal(bandForInherentScore(3), 'very_low');
-  assert.equal(bandForInherentScore(4), 'low');
-  assert.equal(bandForInherentScore(6), 'low');
-  assert.equal(bandForInherentScore(7), 'medium');
-  assert.equal(bandForInherentScore(12), 'medium');
-  assert.equal(bandForInherentScore(13), 'high');
-  assert.equal(bandForInherentScore(19), 'high');
-  assert.equal(bandForInherentScore(20), 'critical');
-  assert.equal(bandForInherentScore(25), 'critical');
+test('inherentBandFor: official heat map corners & edges', () => {
+  assert.equal(inherentBandFor(1, 1), 'very_low'); // مستبعد × ضئيل
+  assert.equal(inherentBandFor(1, 2), 'low'); //      مستبعد × قليل
+  assert.equal(inherentBandFor(2, 1), 'low'); //      نادر × ضئيل
+  assert.equal(inherentBandFor(3, 3), 'medium'); //   محتمل × متوسط
+  assert.equal(inherentBandFor(5, 2), 'high'); //     شبه مؤكد × قليل (=10 → high)
+  assert.equal(inherentBandFor(2, 4), 'medium'); //   نادر × مرتفع (=8 → medium)
+  assert.equal(inherentBandFor(5, 4), 'critical'); // شبه مؤكد × مرتفع (=20 → critical)
+  assert.equal(inherentBandFor(5, 5), 'critical');
 });
 
-test('computeInherent: score = likelihood × impact', () => {
+test('computeInherent: score = likelihood × impact, band from heat map', () => {
   assert.deepEqual(computeInherent(5, 5), { score: 25, band: 'critical' });
   assert.deepEqual(computeInherent(1, 1), { score: 1, band: 'very_low' });
   assert.deepEqual(computeInherent(3, 3), { score: 9, band: 'medium' });
+  assert.deepEqual(computeInherent(4, 5), { score: 20, band: 'critical' });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -85,10 +84,14 @@ test('controlAdequacyFromAnswers: yes-count → adequacy (default)', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // §8.5 residual priority + level
 // ─────────────────────────────────────────────────────────────────────────────
-test('residualPriority: default grid corners', () => {
+test('residualPriority: official grid cells', () => {
   assert.equal(residualPriority('very_low', 'excellent'), 25); // best
   assert.equal(residualPriority('critical', 'weak'), 1); //      worst
-  assert.equal(residualPriority('high', 'unacceptable'), 7);
+  assert.equal(residualPriority('critical', 'excellent'), 8); // critical row, best control
+  assert.equal(residualPriority('high', 'neutral'), 7);
+  assert.equal(residualPriority('high', 'unacceptable'), 6);
+  assert.equal(residualPriority('medium', 'excellent'), 18);
+  assert.equal(residualPriority('low', 'neutral'), 17);
 });
 
 test('levelForPriority: explicit groupings from the doc', () => {
@@ -140,7 +143,7 @@ test('Scenario 1: an ordinary risk stays out of Top Risks', () => {
     impacts: { business_continuity: 2 },
     controlAnswers: [true, true, true, true],
   });
-  assert.equal(r.inherentBand, 'very_low');
+  assert.equal(r.inherentBand, 'low'); // L1 × I2 = low (official heat map)
   assert.equal(r.isTopRisk, false);
   assert.ok(r.residualLevel >= 3);
 });

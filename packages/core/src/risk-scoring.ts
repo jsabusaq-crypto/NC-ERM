@@ -41,18 +41,19 @@ export function aggregateImpact(
   }
 }
 
-/** §8.3 — map an inherent score (likelihood×impact) to its band. */
-export function bandForInherentScore(
-  score: number,
+/** Clamp a value to an integer in [1,5]. */
+function clamp5(n: number): 1 | 2 | 3 | 4 | 5 {
+  const r = Math.round(n);
+  return (r < 1 ? 1 : r > 5 ? 5 : r) as 1 | 2 | 3 | 4 | 5;
+}
+
+/** §8.3 — inherent band from the official heat map (likelihood × impact). */
+export function inherentBandFor(
+  likelihood: number,
+  impact: number,
   methodology: Methodology = DEFAULT_METHODOLOGY,
 ): InherentBand {
-  for (const b of methodology.inherentBands) {
-    if (score >= b.min && score <= b.max) return b.band;
-  }
-  // Out of modelled range: clamp to nearest end.
-  const first = methodology.inherentBands[0];
-  const last = methodology.inherentBands[methodology.inherentBands.length - 1];
-  return score < first.min ? first.band : last.band;
+  return methodology.inherentMatrix[clamp5(likelihood) - 1][clamp5(impact) - 1];
 }
 
 /** §8.3 — inherent score and band from likelihood and aggregated impact. */
@@ -62,7 +63,9 @@ export function computeInherent(
   methodology: Methodology = DEFAULT_METHODOLOGY,
 ): { score: number; band: InherentBand } {
   const score = likelihood * aggregatedImpact;
-  return { score, band: bandForInherentScore(score, methodology) };
+  // No applicable impact → no inherent exposure.
+  if (aggregatedImpact < 1) return { score: 0, band: 'very_low' };
+  return { score, band: inherentBandFor(likelihood, aggregatedImpact, methodology) };
 }
 
 /** §8.4 — control-environment adequacy from the 4 yes/no answers. */

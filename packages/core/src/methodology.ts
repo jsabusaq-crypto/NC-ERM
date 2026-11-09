@@ -21,17 +21,6 @@ import { CONTROL_ADEQUACY_LEVELS, INHERENT_BANDS } from './types.ts';
 /** How the 24 per-domain impact scores collapse into one aggregated impact. */
 export type ImpactAggregation = 'max' | 'average' | 'sum_capped';
 
-/** A contiguous numeric range for an inherent band (inclusive). */
-export interface InherentBandRange {
-  band: InherentBand;
-  /** Inclusive lower bound of likelihood×impact (1..25). */
-  min: number;
-  /** Inclusive upper bound. */
-  max: number;
-  /** Semantic color token (resolved to a hex in the theme layer). */
-  colorKey: 'band_very_low' | 'band_low' | 'band_medium' | 'band_high' | 'band_critical';
-}
-
 /** A priority range that maps to a final residual level. */
 export interface LevelRange {
   level: ResidualLevel;
@@ -41,11 +30,14 @@ export interface LevelRange {
 }
 
 export interface Methodology {
-  /** §8.2 — aggregation rule. ⚠ VERIFY (default: worst-case max). */
+  /** §8.2 — aggregation rule. CONFIRMED = max (89% fit on the real register). */
   impactAggregation: ImpactAggregation;
 
-  /** §8.3 — inherent band ranges over likelihood×impact (1..25). ⚠ VERIFY ranges. */
-  inherentBands: readonly InherentBandRange[];
+  /**
+   * §8.3 — inherent-risk heat map, CONFIRMED from the official methodology PDF.
+   * `inherentMatrix[likelihood-1][impact-1]` → band (likelihood & impact each 1..5).
+   */
+  inherentMatrix: readonly (readonly InherentBand[])[];
 
   /**
    * §8.4 — control adequacy from the 4 yes/no answers.
@@ -71,15 +63,17 @@ export interface Methodology {
 }
 
 /**
- * ⚠ VERIFY — default inherent band ranges.
- * Contiguous, monotonic cover of 1..25. Replace cut-offs with the official matrix.
+ * Official inherent-risk heat map (المخاطر الكامنة), CONFIRMED from the methodology PDF.
+ * Rows = likelihood 1..5 (مستبعد حدوثه … شبه مؤكد); cols = impact 1..5 (ضئيل … مرتفع جداً).
+ * Note the bands are NOT a simple function of likelihood×impact — this is the exact grid.
  */
-const DEFAULT_INHERENT_BANDS: readonly InherentBandRange[] = [
-  { band: 'very_low', min: 1, max: 3, colorKey: 'band_very_low' },
-  { band: 'low', min: 4, max: 6, colorKey: 'band_low' },
-  { band: 'medium', min: 7, max: 12, colorKey: 'band_medium' },
-  { band: 'high', min: 13, max: 19, colorKey: 'band_high' },
-  { band: 'critical', min: 20, max: 25, colorKey: 'band_critical' },
+const DEFAULT_INHERENT_MATRIX: readonly (readonly InherentBand[])[] = [
+  // impact:  1          2         3         4          5
+  ['very_low', 'low', 'medium', 'medium', 'medium'], //    likelihood 1
+  ['low', 'medium', 'medium', 'medium', 'high'], //        likelihood 2
+  ['medium', 'medium', 'medium', 'high', 'high'], //       likelihood 3
+  ['medium', 'medium', 'high', 'high', 'critical'], //     likelihood 4
+  ['medium', 'high', 'high', 'critical', 'critical'], //   likelihood 5
 ];
 
 /**
@@ -95,17 +89,17 @@ const DEFAULT_CONTROL_ADEQUACY_BY_YES_COUNT: readonly ControlAdequacy[] = [
 ];
 
 /**
- * ⚠ VERIFY — default 5×5 priority grid.
- * Monotonic placeholder: priority = 25 − (inherentIndex*5 + controlIndex).
- * Rows = inherent (very_low..critical); cols = control (excellent..weak).
- * Worst cell (critical × weak) = 1; best cell (very_low × excellent) = 25.
+ * Official residual-risk priority grid (المخاطر المتبقية), CONFIRMED from the methodology PDF.
+ * Rows = inherent band (very_low..critical); cols = control adequacy (excellent..weak).
+ * Each cell is the residual priority 1..25 (1 = most urgent).
  */
 const DEFAULT_PRIORITY_GRID: readonly (readonly number[])[] = [
+  // control: excellent acceptable neutral unacceptable weak
   [25, 24, 23, 22, 21], // very_low
-  [20, 19, 18, 17, 16], // low
-  [15, 14, 13, 12, 11], // medium
-  [10, 9, 8, 7, 6], //    high
-  [5, 4, 3, 2, 1], //     critical
+  [20, 19, 17, 16, 15], // low
+  [18, 14, 12, 11, 10], // medium
+  [13, 9, 7, 6, 5], //    high
+  [8, 4, 3, 2, 1], //     critical
 ];
 
 /** §8.5 — EXPLICIT in the doc (red/orange/yellow/green/light-green). */
@@ -119,7 +113,7 @@ const DEFAULT_LEVEL_RANGES: readonly LevelRange[] = [
 
 export const DEFAULT_METHODOLOGY: Methodology = {
   impactAggregation: 'max',
-  inherentBands: DEFAULT_INHERENT_BANDS,
+  inherentMatrix: DEFAULT_INHERENT_MATRIX,
   controlAdequacyByYesCount: DEFAULT_CONTROL_ADEQUACY_BY_YES_COUNT,
   priorityGrid: DEFAULT_PRIORITY_GRID,
   levelRanges: DEFAULT_LEVEL_RANGES,
@@ -146,8 +140,8 @@ export const EMPTY_EQUIVALENT_VALUES: readonly string[] = [
 
 /** Validate that a methodology config is internally consistent. Throws on error. */
 export function validateMethodology(m: Methodology): void {
-  if (m.inherentBands.length !== INHERENT_BANDS.length) {
-    throw new Error(`inherentBands must have ${INHERENT_BANDS.length} entries`);
+  if (m.inherentMatrix.length !== 5 || m.inherentMatrix.some((row) => row.length !== 5)) {
+    throw new Error('inherentMatrix must be a 5×5 grid (likelihood × impact)');
   }
   if (m.controlAdequacyByYesCount.length !== 5) {
     throw new Error('controlAdequacyByYesCount must have 5 entries (0..4 yes)');

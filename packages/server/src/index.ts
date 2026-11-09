@@ -124,6 +124,20 @@ route('GET', '/', async (_req, res) => {
   }
 });
 
+// Static assets (logo, watermark) from public/assets.
+route('GET', '/assets/:file', async (_req, res, ctx) => {
+  const file = ctx.params.file.replace(/[^a-zA-Z0-9._-]/g, ''); // no path traversal
+  try {
+    const buf = await readFile(join(PUBLIC_DIR, 'assets', file));
+    const ext = file.split('.').pop();
+    const type = ext === 'png' ? 'image/png' : ext === 'jpeg' || ext === 'jpg' ? 'image/jpeg' : 'application/octet-stream';
+    res.writeHead(200, { 'content-type': type, 'cache-control': 'max-age=3600' });
+    res.end(buf);
+  } catch {
+    json(res, 404, { error: 'asset not found' });
+  }
+});
+
 // Live assessment (no persistence) — lets the UI show the real engine output.
 route('POST', '/api/assess', (_req, res, ctx) => {
   const b = ctx.body as { assessment?: RiskAssessmentInput };
