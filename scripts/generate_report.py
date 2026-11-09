@@ -57,7 +57,29 @@ def main():
     data = json.load(open(a.risks, encoding='utf-8'))
     reg = data['register']
 
-    if a.scope == 'top':
+    compliance = (a.scope == 'compliance')
+    deps = []
+    if compliance:
+        from collections import OrderedDict
+        today = datetime.date.today()
+        by = OrderedDict()
+        for r in reg:
+            d = (r.get('department') or '—').strip()
+            o = by.setdefault(d, {'dept': d, 'count': 0, 'last': None})
+            o['count'] += 1
+            u = r.get('updateDate')
+            u = str(u)[:10] if u not in (None, '') else None
+            if u and (not o['last'] or u > o['last']):
+                o['last'] = u
+        def _since(s):
+            try:
+                y, m, dd = map(int, s[:10].split('-')); return (today - datetime.date(y, m, dd)).days
+            except Exception:
+                return None
+        deps = [{**o, 'since': _since(o['last'])} for o in by.values()]
+        deps.sort(key=lambda x: -(x['since'] or 0))
+        rows = []; scope_ar = 'حالات الإدارات والتأخير'
+    elif a.scope == 'top':
         rows = [r for r in reg if r.get('isTopRisk')]
         scope_ar = 'أهم المخاطر (المستوى 1 و2)'
     elif a.scope == 'department':
@@ -86,7 +108,8 @@ def main():
     # meta
     meta = doc.add_table(rows=1, cols=3); meta.alignment = WD_TABLE_ALIGNMENT.CENTER
     today = datetime.date.today().isoformat()
-    for i, (k, v) in enumerate([('نطاق التقرير', scope_ar), ('عدد المخاطر', str(len(rows))), ('تاريخ الإصدار', today)]):
+    _cnt = (('عدد الإدارات', str(len(deps))) if compliance else ('عدد المخاطر', str(len(rows))))
+    for i, (k, v) in enumerate([('نطاق التقرير', scope_ar), _cnt, ('تاريخ الإصدار', today)]):
         c = meta.rows[0].cells[i]; shade(c, 'F6F9FC')
         cell_text(c, k, bold=True, color=BRAND, align='center', size=9)
         pp = c.add_paragraph(); pp.alignment = WD_ALIGN_PARAGRAPH.CENTER; set_rtl(pp)
@@ -95,31 +118,54 @@ def main():
 
     # explanatory introduction
     intro_p = doc.add_paragraph(); intro_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT; set_rtl(intro_p)
-    ri = intro_p.add_run(
+    intro_compliance = (
+        'يوضّح هذا التقرير حالة التزام الإدارات برفع تقاريرها وتحديث سجلات مخاطرها. يبيّن الجدول أدناه '
+        'لكل إدارة: عدد مخاطرها، وتاريخ آخر رفع/تحديث فعلي، ومدة التأخير بالأيام منذ آخر تحديث، وحالة '
+        'السجل (محدّث أو متأخر). ويُستخدم لمتابعة انضباط الإدارات في الرفع والتحديث الدوري وفق الدورة '
+        'الربع سنوية المعتمدة، ورفع حالات التأخير إلى الإدارة المختصة.')
+    intro_risks = (
         'يعرض هذا التقرير المخاطر ضمن النطاق المحدّد أعلاه، مُقيّمةً وفق المنهجية الرسمية لإدارة '
         'المخاطر المؤسسية المعتمدة من شركة الصحة القابضة (مقياس الاحتمالية ومقياس الأثر عبر مجالات '
         'الخطر، ومصفوفة المخاطر الكامنة، وكفاية البيئة الرقابية، ومصفوفة المخاطر المتبقية). يوضّح الجدول '
         'أدناه لكل خطر: الإدارة المسؤولة، ووصفه، ومستوى احتماليته وأثره، وتقييمه الكامن، ومستواه المتبقّي. '
         'ويُستخدم هذا التقرير لمتابعة أهم المخاطر وخطط معالجتها ودعم اتخاذ القرار على مستوى التجمع.')
+    ri = intro_p.add_run(intro_compliance if compliance else intro_risks)
     ri.font.size = Pt(10); ri.font.name = 'Arial'; ri.font.color.rgb = RGBColor(0x30, 0x45, 0x5a)
     doc.add_paragraph()
 
-    # risk table
-    cols = ['المستوى', 'الكامن', 'الأثر', 'الاحتمالية', 'الإدارة', 'وصف الخطر', 'الرمز']
-    tbl = doc.add_table(rows=1, cols=len(cols)); tbl.style = 'Table Grid'; tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
-    for i, h in enumerate(cols):
-        c = tbl.rows[0].cells[i]; shade(c, '0A1F30'); cell_text(c, h, bold=True, color=WHITE, align='center', size=9)
-    for r in rows:
-        cells = tbl.add_row().cells
-        lvl = r.get('residualLevel')
-        cell_text(cells[0], f"مستوى {lvl}" if lvl else '—', align='center', color=WHITE if lvl else None)
-        if lvl: shade(cells[0], LEVEL_FILL.get(lvl, 'FFFFFF'))
-        cell_text(cells[1], BAND_AR.get(r.get('inherentBand'), '—'), align='center')
-        cell_text(cells[2], r.get('impactLabel') or '—', align='center')
-        cell_text(cells[3], r.get('likelihoodLabel') or '—', align='center')
-        cell_text(cells[4], r.get('department') or '—')
-        cell_text(cells[5], (r.get('title') or '')[:80])
-        cell_text(cells[6], r.get('code') or '—', align='center', bold=True)
+    if compliance:
+        # department status & delays table
+        cols = ['حالة السجل', 'التأخير (يوم)', 'آخر رفع/تحديث', 'عدد المخاطر', 'الإدارة']
+        tbl = doc.add_table(rows=1, cols=len(cols)); tbl.style = 'Table Grid'; tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
+        for i, h in enumerate(cols):
+            c = tbl.rows[0].cells[i]; shade(c, '0A1F30'); cell_text(c, h, bold=True, color=WHITE, align='center', size=9)
+        for d in deps:
+            cells = tbl.add_row().cells
+            since = d.get('since')
+            stale = (since is None) or (since > 120)
+            cell_text(cells[0], 'متأخر' if stale else 'محدّث', align='center', bold=True, color=WHITE)
+            shade(cells[0], 'D7263D' if stale else '3AA266')
+            cell_text(cells[1], '—' if since is None else str(since), align='center', bold=True)
+            cell_text(cells[2], d.get('last') or '—', align='center')
+            cell_text(cells[3], str(d.get('count', 0)), align='center')
+            cell_text(cells[4], d.get('dept') or '—', align='right', bold=True)
+    else:
+        # risk table
+        cols = ['المستوى', 'الكامن', 'الأثر', 'الاحتمالية', 'الإدارة', 'وصف الخطر', 'الرمز']
+        tbl = doc.add_table(rows=1, cols=len(cols)); tbl.style = 'Table Grid'; tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
+        for i, h in enumerate(cols):
+            c = tbl.rows[0].cells[i]; shade(c, '0A1F30'); cell_text(c, h, bold=True, color=WHITE, align='center', size=9)
+        for r in rows:
+            cells = tbl.add_row().cells
+            lvl = r.get('residualLevel')
+            cell_text(cells[0], f"مستوى {lvl}" if lvl else '—', align='center', color=WHITE if lvl else None)
+            if lvl: shade(cells[0], LEVEL_FILL.get(lvl, 'FFFFFF'))
+            cell_text(cells[1], BAND_AR.get(r.get('inherentBand'), '—'), align='center')
+            cell_text(cells[2], r.get('impactLabel') or '—', align='center')
+            cell_text(cells[3], r.get('likelihoodLabel') or '—', align='center')
+            cell_text(cells[4], r.get('department') or '—')
+            cell_text(cells[5], (r.get('title') or '')[:80])
+            cell_text(cells[6], r.get('code') or '—', align='center', bold=True)
 
     # sign-off / approval block
     doc.add_paragraph()
@@ -145,7 +191,8 @@ def main():
     rf = f.add_run('أُصدر آلياً من منصة NH-ERM — تجمع نجران الصحي'); rf.font.size = Pt(8); rf.font.color.rgb = RGBColor(0x90, 0xa1, 0xb4); rf.font.name = 'Arial'
 
     doc.save(a.out)
-    print(f'Report: {len(rows)} risks · scope={a.scope} → {a.out}')
+    n = len(deps) if compliance else len(rows)
+    print(f'Report: {n} {"departments" if compliance else "risks"} · scope={a.scope} → {a.out}')
 
 
 if __name__ == '__main__':
